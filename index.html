@@ -55,7 +55,7 @@
 
     <script>
         // Intento de conexión real de respaldo
-        var URL_BROKER = 'wss://broker.emqx.io:8084/mqtt'; 
+        var URL_BROKER = 'wss://://hivemq.com';
         var client = mqtt.connect(URL_BROKER, { clientId: 'user_' + Math.random().toString(16).substring(2, 8), timeout: 2000 });
 
         client.on('connect', function() {
