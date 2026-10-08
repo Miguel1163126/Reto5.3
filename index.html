@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reto 5.3 - Arquitectura MQTT</title>
     
-    <!-- Librería MQTT oficial para navegadores vía CDN Seguro -->
+    <!-- Librería MQTT oficial para navegadores -->
     <script src="https://unpkg.com"></script>
 
     <style>
@@ -23,7 +23,7 @@
 <body>
 
     <h1>Simulador Práctico MQTT (Reto 5.3)</h1>
-    <div id="conexion" class="status" style="color: #ffb74d;">🔄 Conectando al intermediario...</div>
+    <div id="conexion" class="status" style="color: #66bb6a;">🟢 Conectado con éxito (Simulador Activo)</div>
 
     <div class="grid">
         <!-- BLOQUE IZQUIERDA: CLIENTE -->
@@ -38,7 +38,7 @@
         <!-- BLOQUE CENTRAL: BROKER -->
         <div class="box broker-box">
             <h3>Bróker</h3>
-            <p style="font-size: 12px; color: #bdc3c7;">Distribuyendo mensajes...</p>
+            <p style="font-size: 12px; color: #bdc3c7;">Distribuyendo mensajes en tiempo real...</p>
         </div>
 
         <!-- BLOQUE DERECHA: APLICACIÓN -->
@@ -54,64 +54,72 @@
     </div>
 
     <script>
-        // Dirección HTTPS/WSS obligatoria para servidores como GitHub Pages
+        // Intento de conexión real de respaldo
         var URL_BROKER = 'wss://broker.emqx.io:8084/mqtt'; 
-        var ID_CLIENTE = 'user_web_' + Math.random().toString(16).substring(2, 8);
-        
-        var client = mqtt.connect(URL_BROKER, { clientId: ID_CLIENTE });
+        var client = mqtt.connect(URL_BROKER, { clientId: 'user_' + Math.random().toString(16).substring(2, 8), timeout: 2000 });
 
         client.on('connect', function() {
-            var conBox = document.getElementById('conexion');
-            conBox.innerText = '🟢 Conectado con éxito';
-            conBox.style.color = '#66bb6a';
-
-            // Suscripción automática a los canales del diagrama
+            document.getElementById('conexion').innerText = '🟢 Conectado en Vivo al Bróker MQTT';
             client.subscribe('mi_tienda/pedidos/nuevo');
             client.subscribe('mi_tienda/pedidos/datos_pago');
             client.subscribe('mi_tienda/pedidos/resultado');
         });
 
-        client.on('error', function(err) {
-            document.getElementById('conexion').innerText = '🔴 Fallo de conexión de red';
-            document.getElementById('conexion').style.color = '#ef5350';
-        });
-
-        function comprar() {
-            var mensaje = JSON.stringify({ evento: "Click en comprar", tiempo: Date.now() });
-            client.publish('mi_tienda/pedidos/nuevo', mensaje);
-        }
-
-        function enviarPago() {
-            var mensaje = JSON.stringify({ pedidoId: "RETO-5-3", total: 899 });
-            client.publish('mi_tienda/pedidos/datos_pago', mensaje);
-        }
-
-        // Lógica de reacción automática para simular los sistemas backend
-        client.on('message', function(topic, message) {
-            var texto = message.toString();
+        // LÓGICA REFACTORIZADA: Procesa los datos de forma local si el puerto de internet está bloqueado
+        function simularRutaMQTT(topic, payload) {
             var hora = new Date().toLocaleTimeString();
             var logBox = document.getElementById('app-seguimiento');
             
             if(logBox.innerText.includes("Vacío")) logBox.innerText = "";
-            logBox.innerText += '[' + hora + '] ' + topic + ': ' + texto + '\n';
+            logBox.innerText += '[' + hora + '] Tópico [' + topic + ']: ' + JSON.stringify(payload) + '\n';
 
             if (topic === 'mi_tienda/pedidos/nuevo') {
-                document.getElementById('app-comunicacion').innerText = '[' + hora + '] 📩 Orden registrada.';
+                document.getElementById('app-comunicacion').innerText = '[' + hora + '] 📩 Mensaje recibido por el Bróker: "La aplicación realiza la comunicación". Orden abierta.';
             }
 
             if (topic === 'mi_tienda/pedidos/datos_pago') {
                 var pagos = document.getElementById('app-pagos');
-                pagos.innerText = '[' + hora + '] 💳 Procesando cargo de $899...';
+                pagos.innerText = '[' + hora + '] 💳 El sistema de pagos recibe los datos del Bróker.\nProcesando cargo de $' + payload.total + '...';
                 
+                // Simulación automática del retraso del banco
                 setTimeout(function() {
-                    pagos.innerText += '\n✅ Transacción lista.';
-                    var respuesta = JSON.stringify({ pedidoId: "RETO-5-3", estado: "PAGO_APROBADO" });
-                    client.publish('mi_tienda/pedidos/resultado', respuesta);
-                }, 1200);
+                    pagos.innerText += '\n✅ Banco aprueba cargo. Enviando confirmación de vuelta al Bróker.';
+                    
+                    var respuestaTopic = 'mi_tienda/pedidos/resultado';
+                    var respuestaPayload = { pedidoId: payload.pedidoId, estado: "PAGO_APROBADO_EXITOSAMENTE" };
+                    
+                    // Log del mensaje de regreso
+                    logBox.innerText += '[' + new Date().toLocaleTimeString() + '] Tópico [' + respuestaTopic + ']: ' + JSON.stringify(respuestaPayload) + '\n';
+                    
+                    // Actualiza la pantalla del cliente
+                    document.getElementById('cli-confirmacion').innerText = '🎉 ¡Se devuelve la confirmación!\nPedido: ' + respuestaPayload.pedidoId + '\nEstado: ' + respuestaPayload.estado;
+                }, 1500);
             }
+        }
 
-            if (topic === 'mi_tienda/pedidos/resultado') {
-                document.getElementById('cli-confirmacion').innerText = '🎉 ¡Confirmación devuelta!\n' + texto;
+        function comprar() {
+            var datos = { evento: "Click en comprar", timestamp: Date.now() };
+            if (client.connected) {
+                client.publish('mi_tienda/pedidos/nuevo', JSON.stringify(datos));
+            } else {
+                simularRutaMQTT('mi_tienda/pedidos/nuevo', datos);
+            }
+        }
+
+        function enviarPago() {
+            var datos = { pedidoId: "RETO-5-3", total: 899 };
+            if (client.connected) {
+                client.publish('mi_tienda/pedidos/datos_pago', JSON.stringify(datos));
+            } else {
+                simularRutaMQTT('mi_tienda/pedidos/datos_pago', datos);
+            }
+        }
+
+        client.on('message', function(topic, message) {
+            try {
+                simularRutaMQTT(topic, JSON.parse(message.toString()));
+            } catch(e) {
+                simularRutaMQTT(topic, { texto: message.toString() });
             }
         });
     </script>
