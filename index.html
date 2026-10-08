@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reto 5.3 - Arquitectura MQTT</title>
     
-    <!-- CDN de la librería oficial MQTT -->
+    <!-- Librería MQTT oficial para navegadores vía CDN Seguro -->
     <script src="https://unpkg.com"></script>
 
     <style>
@@ -23,10 +23,10 @@
 <body>
 
     <h1>Simulador Práctico MQTT (Reto 5.3)</h1>
-    <div id="conexion" class="status" style="color: #66bb6a;">🟢 Conectado con éxito al Bróker</div>
+    <div id="conexion" class="status" style="color: #ffb74d;">🔄 Conectando al intermediario...</div>
 
     <div class="grid">
-        <!-- IZQUIERDA -->
+        <!-- BLOQUE IZQUIERDA: CLIENTE -->
         <div class="box">
             <h3>Evento Cliente</h3>
             <button onclick="comprar()">1. Presiona en comprar</button>
@@ -35,13 +35,13 @@
             <pre id="cli-confirmacion">Esperando transacción...</pre>
         </div>
 
-        <!-- CENTRO -->
+        <!-- BLOQUE CENTRAL: BROKER -->
         <div class="box broker-box">
             <h3>Bróker</h3>
             <p style="font-size: 12px; color: #bdc3c7;">Distribuyendo mensajes...</p>
         </div>
 
-        <!-- DERECHA -->
+        <!-- BLOQUE DERECHA: APLICACIÓN -->
         <div class="box">
             <h3>Eventos Aplicación</h3>
             <p><b>Comunicación:</b></p>
@@ -54,61 +54,65 @@
     </div>
 
     <script>
-        // Configuración de red segura
+        // Dirección HTTPS/WSS obligatoria para servidores como GitHub Pages
         var URL_BROKER = 'wss://broker.emqx.io:8084/mqtt'; 
         var ID_CLIENTE = 'user_web_' + Math.random().toString(16).substring(2, 8);
         
         var client = mqtt.connect(URL_BROKER, { clientId: ID_CLIENTE });
 
         client.on('connect', function() {
+            var conBox = document.getElementById('conexion');
+            conBox.innerText = '🟢 Conectado con éxito';
+            conBox.style.color = '#66bb6a';
+
+            // Suscripción automática a los canales del diagrama
             client.subscribe('mi_tienda/pedidos/nuevo');
             client.subscribe('mi_tienda/pedidos/datos_pago');
             client.subscribe('mi_tienda/pedidos/resultado');
         });
 
-        // FUNCIÓN AUTOMÁTICA: Si el bróker externo falla, la web procesa el flujo localmente
-        function procesarMensajeLocal(topic, texto) {
+        client.on('error', function(err) {
+            document.getElementById('conexion').innerText = '🔴 Fallo de conexión de red';
+            document.getElementById('conexion').style.color = '#ef5350';
+        });
+
+        function comprar() {
+            var mensaje = JSON.stringify({ evento: "Click en comprar", tiempo: Date.now() });
+            client.publish('mi_tienda/pedidos/nuevo', mensaje);
+        }
+
+        function enviarPago() {
+            var mensaje = JSON.stringify({ pedidoId: "RETO-5-3", total: 899 });
+            client.publish('mi_tienda/pedidos/datos_pago', mensaje);
+        }
+
+        // Lógica de reacción automática para simular los sistemas backend
+        client.on('message', function(topic, message) {
+            var texto = message.toString();
             var hora = new Date().toLocaleTimeString();
             var logBox = document.getElementById('app-seguimiento');
+            
             if(logBox.innerText.includes("Vacío")) logBox.innerText = "";
             logBox.innerText += '[' + hora + '] ' + topic + ': ' + texto + '\n';
 
             if (topic === 'mi_tienda/pedidos/nuevo') {
-                document.getElementById('app-comunicacion').innerText = '[' + hora + '] 📩 Orden detectada en comunicación.';
+                document.getElementById('app-comunicacion').innerText = '[' + hora + '] 📩 Orden registrada.';
             }
 
             if (topic === 'mi_tienda/pedidos/datos_pago') {
-                document.getElementById('app-pagos').innerText = '[' + hora + '] 💳 Pasarela procesando cobro...';
+                var pagos = document.getElementById('app-pagos');
+                pagos.innerText = '[' + hora + '] 💳 Procesando cargo de $899...';
+                
                 setTimeout(function() {
-                    document.getElementById('app-pagos').innerText += '\n✅ Cobrado con éxito.';
-                    document.getElementById('cli-confirmacion').innerText = '🎉 ¡Confirmación Devolución!\nPedido: RETO-5-3\nEstado: PAGO_APROBADO';
-                    logBox.innerText += '[' + hora + '] mi_tienda/pedidos/resultado: {"pedidoId":"RETO-5-3","estado":"APROBADO"}\n';
+                    pagos.innerText += '\n✅ Transacción lista.';
+                    var respuesta = JSON.stringify({ pedidoId: "RETO-5-3", estado: "PAGO_APROBADO" });
+                    client.publish('mi_tienda/pedidos/resultado', respuesta);
                 }, 1200);
             }
-        }
 
-        function comprar() {
-            var datos = { evento: "Click en comprar", tiempo: Date.now() };
-            var txt = JSON.stringify(datos);
-            if (client.connected) {
-                client.publish('mi_tienda/pedidos/nuevo', txt);
-            } else {
-                procesarMensajeLocal('mi_tienda/pedidos/nuevo', txt);
+            if (topic === 'mi_tienda/pedidos/resultado') {
+                document.getElementById('cli-confirmacion').innerText = '🎉 ¡Confirmación devuelta!\n' + texto;
             }
-        }
-
-        function enviarPago() {
-            var datos = { pedidoId: "RETO-5-3", total: 899 };
-            var txt = JSON.stringify(datos);
-            if (client.connected) {
-                client.publish('mi_tienda/pedidos/datos_pago', txt);
-            } else {
-                procesarMensajeLocal('mi_tienda/pedidos/datos_pago', txt);
-            }
-        }
-
-        client.on('message', function(topic, message) {
-            procesarMensajeLocal(topic, message.toString());
         });
     </script>
 </body>
